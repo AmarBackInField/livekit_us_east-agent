@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -83,8 +84,79 @@ VOICEMAIL_DETECT_WINDOW_SEC = 8.0  # only consider voicemail within first N seco
 # Prewarm
 # ---------------------------------------------------------------------------
 
+# One-shot region/latency diagnostic — runs once per worker process
+_REGION_DIAG_DONE = False
+
+
+def _run_region_diagnostic() -> None:
+    """Measure RTT to each provider from this container.
+
+    Helps confirm whether the agent is actually deployed in-region (us-east).
+    Expected values inside us-east-1:
+      Groq         : 5-30 ms
+      Deepgram     : 5-30 ms
+      Cartesia     : 5-30 ms
+      LiveKit Cloud: 5-30 ms (depends on project region)
+      MongoDB      : 5-30 ms IF cluster is in us-east, else 200-300 ms (Mumbai)
+    """
+    global _REGION_DIAG_DONE
+    if _REGION_DIAG_DONE:
+        return
+    _REGION_DIAG_DONE = True
+
+    import socket
+    import time as _t
+    from urllib.parse import urlparse
+
+    targets = {
+        "Groq":     "api.groq.com",
+        "Deepgram": "api.deepgram.com",
+        "Cartesia": "api.cartesia.ai",
+    }
+    livekit_url = os.getenv("LIVEKIT_URL", "")
+    if livekit_url:
+        try:
+            host = urlparse(livekit_url).hostname
+            if host:
+                targets["LiveKit"] = host
+        except Exception:
+            pass
+    mongo_uri = os.getenv("MONGODB_URI", "")
+    if "@" in mongo_uri:
+        try:
+            host = mongo_uri.split("@", 1)[1].split("/", 1)[0].split(",", 1)[0].split(":", 1)[0]
+            # Atlas uses mongodb+srv:// — resolve actual shard host via SRV
+            if "+srv" in mongo_uri.lower():
+                try:
+                    import dns.resolver  # provided by `dnspython` (pymongo dep)
+                    answers = dns.resolver.resolve(f"_mongodb._tcp.{host}", "SRV")
+                    if answers:
+                        host = str(answers[0].target).rstrip(".")
+                except Exception:
+                    pass
+            if host:
+                targets["MongoDB"] = host
+        except Exception:
+            pass
+
+    logger.info("─" * 72)
+    logger.info("REGION DIAGNOSTIC (TCP connect RTT from this container)")
+    for name, host in targets.items():
+        port = 27017 if name == "MongoDB" else 443
+        try:
+            t0 = _t.time()
+            with socket.create_connection((host, port), timeout=2.0):
+                rtt_ms = (_t.time() - t0) * 1000
+            warn = "  ⚠️ HIGH — wrong region?" if rtt_ms > 100 else ""
+            logger.info(f"  {name:<10} → {host:<55} {rtt_ms:6.0f} ms{warn}")
+        except Exception as e:
+            logger.warning(f"  {name:<10} → {host:<55} FAIL ({e})")
+    logger.info("─" * 72)
+
+
 def prewarm(proc: JobProcess) -> None:
     """Preload Silero VAD + turn-detector once per worker process."""
+    _run_region_diagnostic()
     proc.userdata["vad"] = silero.VAD.load(
         min_speech_duration=0.05,
         min_silence_duration=0.05,   # turn_detector handles real endpointing
@@ -472,6 +544,9 @@ async def entrypoint(ctx: JobContext) -> None:
                     logger.warning("TTFT %.0fms exceeds target %dms", first_chunk_ms, target)
                 else:
                     logger.info("TTFT %.0fms ✅", first_chunk_ms)
+                # Feed the REAL TTFT into stream_logger so [TURN] summary is accurate
+                if state.stream_logger:
+                    state.stream_logger.llm_ttft_observed(first_chunk_ms)
         except Exception:
             logger.exception("metrics_collected failed")
 
@@ -494,12 +569,14 @@ async def entrypoint(ctx: JobContext) -> None:
                 emoji = "🧑" if role == "user" else "🤖"
                 logger.info(f"-> {emoji}🗣️ {role.capitalize()} said: \"{content}\"")
                 
-                # Track LLM response and TTS synthesis for streaming analysis
+                # NOTE: Do NOT call llm_chunk_received here. `conversation_item_added`
+                # only fires AFTER TTS finishes playing the assistant turn, so timing
+                # it would give a wildly misleading "TTFC" equal to the spoken audio
+                # duration. Real per-chunk LLM timing is reported by LiveKit's
+                # `metrics_collected` event (ttft field) wired in `_on_metrics_collected`.
                 if state.stream_logger and role == "assistant":
-                    # This is the complete LLM response - log it
-                    state.stream_logger.llm_chunk_received(content)
-                    state.stream_logger.llm_response_complete()
-                    # TTS synthesis starts after LLM response
+                    # Just record the finalized assistant text & flag TTS start.
+                    state.stream_logger.llm_finalized(content)
                     state.stream_logger.tts_synthesis_started(content)
         except Exception:
             logger.exception("on_item_added failed")

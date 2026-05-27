@@ -147,70 +147,47 @@ class StreamingDebugLogger:
             preview = prompt_preview[:100] + "..." if len(prompt_preview) > 100 else prompt_preview
             self.logger.info(f"[LLM] 📤 Prompt preview: \"{preview}\"")
     
-    def llm_chunk_received(self, chunk_text: str):
-        """Log LLM response committed to conversation."""
+    def llm_ttft_observed(self, ttft_ms: float):
+        """Record the REAL TTFT reported by LiveKit's metrics_collected event.
+
+        This is the only trustworthy first-token measurement: it comes from the
+        LLM plugin itself, not from a post-hoc event that fires after TTS playback.
+        """
+        self._llm_first_chunk_time = (self._llm_start_time or time.time()) + ttft_ms / 1000.0
+        if ttft_ms > 1500:
+            self.logger.warning(f"[LLM] ⚠️  SLOW TTFT: {ttft_ms:.0f}ms (network or cold connection?)")
+        elif ttft_ms > 500:
+            self.logger.info(f"[LLM] TTFT: {ttft_ms:.0f}ms (acceptable, target <300ms in-region)")
+        else:
+            self.logger.info(f"[LLM] ✅ TTFT: {ttft_ms:.0f}ms")
+
+    def llm_finalized(self, full_text: str):
+        """Called when the assistant turn is fully committed to history.
+
+        NOTE: This is AFTER TTS audio has played, so the elapsed time here
+        is NOT latency — it includes the duration of the spoken response.
+        We log it as a turn duration for context only.
+        """
         now = time.time()
+        self._llm_chunk_count = 1
+        self._llm_full_response = full_text
+
+        full_display = full_text[:100] + "..." if len(full_text) > 100 else full_text
+        full_display = full_display.replace("\n", " ")
+        self.logger.info(f"[LLM] ✅ COMPLETE: \"{full_display}\"")
+
+        if self._llm_start_time:
+            turn_duration_ms = (now - self._llm_start_time) * 1000
+            self.logger.info(f"[LLM] ⏱️  Turn duration (incl. TTS playback): {turn_duration_ms:.0f}ms")
+
+    # ─── Back-compat shims (older callers) ──────────────────────────────────
+    def llm_chunk_received(self, chunk_text: str):  # pragma: no cover
+        """Deprecated: misleading metric. Use `llm_ttft_observed` + `llm_finalized`."""
         self._llm_chunk_count += 1
         self._llm_full_response += chunk_text
-        
-        # Truncate long responses for logging
-        display_text = chunk_text[:80] + "..." if len(chunk_text) > 80 else chunk_text
-        display_text = display_text.replace("\n", " ")
-        
-        if self._llm_first_chunk_time is None:
-            # First response committed - this is the critical TTFC metric
-            self._llm_first_chunk_time = now
-            if self._llm_start_time:
-                ttfc = (now - self._llm_start_time) * 1000
-                self.logger.info(f"[LLM] 📦 Response #{self._llm_chunk_count}: \"{display_text}\" (⚡ COMMITTED at {ttfc:.0f}ms)")
-                
-                # Analyze the TTFC
-                if ttfc > 3000:
-                    self.logger.warning(f"[LLM] 🐌 VERY SLOW TTFC: {ttfc:.0f}ms - LLM is likely NOT streaming to TTS!")
-                elif ttfc > 1500:
-                    self.logger.warning(f"[LLM] ⚠️  SLOW TTFC: {ttfc:.0f}ms - Consider optimizing LLM")
-                else:
-                    self.logger.info(f"[LLM] ✅ Good TTFC: {ttfc:.0f}ms")
-            else:
-                self.logger.info(f"[LLM] 📦 Response #{self._llm_chunk_count}: \"{display_text}\" (FIRST)")
-        else:
-            if self._llm_last_chunk_time:
-                delta = (now - self._llm_last_chunk_time) * 1000
-                self.logger.info(f"[LLM] 📦 Response #{self._llm_chunk_count}: \"{display_text}\" (+{delta:.0f}ms)")
-            else:
-                self.logger.info(f"[LLM] 📦 Response #{self._llm_chunk_count}: \"{display_text}\"")
-        
-        self._llm_last_chunk_time = now
-    
-    def llm_response_complete(self):
-        """Log when LLM response is complete."""
-        now = time.time()
-        
-        if self._llm_start_time:
-            total_time = (now - self._llm_start_time) * 1000
-            ttfc = (self._llm_first_chunk_time - self._llm_start_time) * 1000 if self._llm_first_chunk_time else 0
-            
-            # Truncate full response for logging
-            full_display = self._llm_full_response[:100] + "..." if len(self._llm_full_response) > 100 else self._llm_full_response
-            full_display = full_display.replace("\n", " ")
-            
-            self.logger.info(f"[LLM] ✅ COMPLETE: \"{full_display}\"")
-            self.logger.info(f"[LLM] ⏱️  Total: {total_time:.0f}ms | TTFC: {ttfc:.0f}ms | Responses: {self._llm_chunk_count}")
-            
-            # Analysis
-            if self._llm_chunk_count <= 1 and ttfc > 2000:
-                self.logger.warning("[LLM] 🚨 CRITICAL: Single response after long delay = NO STREAMING!")
-                self.logger.warning("[LLM] 💡 The LLM is generating the FULL response before sending to TTS")
-                self.logger.warning("[LLM] 💡 This is the main latency bottleneck!")
-            elif self._llm_chunk_count <= 1:
-                self.logger.info("[LLM] ℹ️  Single response (short response or buffered)")
-            else:
-                self.logger.info(f"[LLM] ✅ Multiple responses committed ({self._llm_chunk_count})")
-        else:
-            full_display = self._llm_full_response[:100] + "..." if len(self._llm_full_response) > 100 else self._llm_full_response
-            self.logger.info(f"[LLM] ✅ COMPLETE: \"{full_display}\"")
-        
-        # Reset for next response
+
+    def llm_response_complete(self):  # pragma: no cover
+        """Deprecated: superseded by `llm_finalized`. Kept as no-op for back-compat."""
         self._llm_last_chunk_time = None
     
     # =========================================================================
@@ -287,39 +264,36 @@ class StreamingDebugLogger:
     # =========================================================================
     
     def log_turn_summary(self):
-        """Log a summary of the complete turn."""
-        self.logger.info("-" * 60)
-        self.logger.info("[SUMMARY] 📊 Turn Summary:")
-        
-        # STT summary
-        if self._stt_interim_count > 0:
-            self.logger.info(f"[SUMMARY] STT: ✅ Streaming ({self._stt_interim_count} interim results)")
+        """One compact line per turn — the only latency report that matters."""
+        # LLM TTFT (real, from metrics_collected)
+        if self._llm_first_chunk_time and self._llm_start_time:
+            ttft_ms = (self._llm_first_chunk_time - self._llm_start_time) * 1000
+            ttft_str = f"{ttft_ms:.0f}ms"
         else:
-            self.logger.info("[SUMMARY] STT: ⚠️  Not streaming (0 interim results)")
-        
-        # LLM summary
-        if self._llm_chunk_count > 1:
-            ttfc = (self._llm_first_chunk_time - self._llm_start_time) * 1000 if self._llm_first_chunk_time and self._llm_start_time else 0
-            self.logger.info(f"[SUMMARY] LLM: ✅ Streaming ({self._llm_chunk_count} chunks, TTFC: {ttfc:.0f}ms)")
-        elif self._llm_chunk_count == 1:
-            self.logger.info("[SUMMARY] LLM: ⚠️  Not streaming (only 1 chunk)")
+            ttft_str = "n/a"
+
+        # TTS time-to-first-audio
+        if self._tts_first_audio_time and self._tts_start_time:
+            ttfa_ms = (self._tts_first_audio_time - self._tts_start_time) * 1000
+            ttfa_str = f"{ttfa_ms:.0f}ms"
         else:
-            self.logger.info("[SUMMARY] LLM: ❓ No data")
-        
-        # TTS summary
-        if self._tts_chunk_count > 1:
-            self.logger.info(f"[SUMMARY] TTS: ✅ Streaming ({self._tts_chunk_count} audio chunks)")
-        elif self._tts_chunk_count == 1:
-            self.logger.info("[SUMMARY] TTS: ⚠️  Not streaming (only 1 chunk)")
-        else:
-            self.logger.info("[SUMMARY] TTS: ❓ No data")
-        
-        # E2E latency
+            ttfa_str = "n/a"
+
+        # End-to-end (user stopped → agent started speaking) — the user-perceived latency
         if self._user_speech_end_time and self._agent_speech_start_time:
-            e2e = (self._agent_speech_start_time - self._user_speech_end_time) * 1000
-            self.logger.info(f"[SUMMARY] E2E Latency: {e2e:.0f}ms")
-        
-        self.logger.info("-" * 60)
+            e2e_ms = (self._agent_speech_start_time - self._user_speech_end_time) * 1000
+            e2e_str = f"{e2e_ms:.0f}ms"
+        else:
+            e2e_str = "n/a"
+
+        # Spoken duration (informational — not latency)
+        spoken_str = "n/a"
+        if self._agent_speech_start_time:
+            spoken_str = f"{(time.time() - self._agent_speech_start_time) * 1000:.0f}ms"
+
+        self.logger.info(
+            f"[TURN] LLM TTFT {ttft_str} · TTS TTFA {ttfa_str} · E2E {e2e_str} · spoken {spoken_str}"
+        )
     
     def log_call_ended(self):
         """Log when the call ends."""
