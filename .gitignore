@@ -1,0 +1,117 @@
+# =============================================================================
+# Secrets / environment
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtualenvs
+venv/
+env/
+ENV/
+.venv/
+.virtualenv/
+
+# Testing / coverage
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checkers
+.mypy_cache/
+.pyright/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# =============================================================================
+# Project artifacts
+# =============================================================================
+# Streaming debug + per-call logs (regenerated every run)
+logs/
+call_logs/
+*.log
+
+# Vector store / heavy ML artifacts
+faiss_index/
+models/
+*.bin
+*.pt
+*.onnx
+*.gguf
+
+# Local DB dumps
+*.sqlite
+*.sqlite3
+*.db
+
+# =============================================================================
+# IDE / editor
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+*~
+
+# Windsurf / Cursor / Copilot caches (keep workspace settings out of git)
+.windsurf/
+.cursor/
+
+# =============================================================================
+# OS
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Misc
+# =============================================================================
+node_modules/
+*.tsbuildinfo

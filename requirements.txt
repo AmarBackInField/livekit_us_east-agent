@@ -1,0 +1,24 @@
+# LiveKit Agents Framework
+livekit
+livekit-agents
+livekit-plugins-deepgram
+livekit-plugins-openai
+livekit-plugins-cartesia
+livekit-plugins-silero
+livekit-plugins-turn-detector  # LLM-based end-of-utterance prediction (huge endpointing speedup)
+
+# Multi-LLM Support for Ultra-Low TTFT
+livekit-plugins-groq      # Groq: 100-200ms TTFT (fastest)
+livekit-plugins-google    # Google Gemini: 300-400ms TTFT
+
+# Database
+pymongo
+motor
+
+# Utilities
+python-dotenv
+cachetools
+httpx
+
+# Production Telephony Optimizations
+redis>=5.0.0  # For distributed state management and pub/sub

@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Agent Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 200px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .content-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
+        .section-title {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 12px 15px;
+            background: #f3f4f6;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #6b7280;
+        }
+
+        .file-input-label:hover {
+            background: #e5e7eb;
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .file-name {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #059669;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #059669;
+            border: 1px solid #34d399;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #f87171;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #2563eb;
+            border: 1px solid #60a5fa;
+        }
+
+        .collections-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .collection-card {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .collection-card:hover {
+            border-color: #667eea;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .collection-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .collection-info {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 15px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .info-text {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎙️ Voice Agent Admin Dashboard</h1>
+            <p>Manage your RAG knowledge base and voice agent settings</p>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('ingest')">📤 Ingest Data</button>
+            <button class="tab" onclick="switchTab('collections')">📚 Collections</button>
+            <button class="tab" onclick="switchTab('delete')">🗑️ Delete Collection</button>
+            <button class="tab" onclick="switchTab('voice')">🎤 Voice Settings</button>
+        </div>
+
+        <!-- Ingest Data Panel -->
+        <div class="content-panel active" id="ingest-panel">
+            <h2 class="section-title">📤 Ingest Data</h2>
+            <div class="alert alert-info" id="ingest-alert"></div>
+            
+            <form id="ingest-form">
+                <div class="form-group">
+                    <label for="collection-name">Collection Name *</label>
+                    <input type="text" id="collection-name" placeholder="e.g., inshora" required>
+                    <div class="info-text">Name of the collection to store data in</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="url-link">Website URL (Optional)</label>
+                    <input type="url" id="url-link" placeholder="https://example.com">
+                    <div class="info-text">URL to scrape and ingest content from</div>
+                </div>
+
+                <div class="form-group">
+                    <label>PDF File (Optional)</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="pdf-file" accept=".pdf">
+                        <label for="pdf-file" class="file-input-label">
+                            📄 Click to upload PDF file
+                        </label>
+                    </div>
+                    <div class="file-name" id="pdf-filename"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Excel/CSV File (Optional)</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="excel-file" accept=".xlsx,.csv">
+                        <label for="excel-file" class="file-input-label">
+                            📊 Click to upload Excel or CSV file
+                        </label>
+                    </div>
+                    <div class="file-name" id="excel-filename"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="ingest-btn">
+                    Ingest Data
+                </button>
+            </form>
+        </div>
+
+        <!-- Collections Panel -->
+        <div class="content-panel" id="collections-panel">
+            <h2 class="section-title">📚 Collections</h2>
+            <div class="alert alert-info" id="collections-alert"></div>
+            
+            <button class="btn btn-primary" onclick="loadCollections()">🔄 Refresh Collections</button>
+            
+            <div id="collections-loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading collections...</p>
+            </div>
+            
+            <div id="collections-container"></div>
+        </div>
+
+        <!-- Delete Collection Panel -->
+        <div class="content-panel" id="delete-panel">
+            <h2 class="section-title">🗑️ Delete Collection</h2>
+            <div class="alert alert-info" id="delete-alert"></div>
+            
+            <form id="delete-form">
+                <div class="form-group">
+                    <label for="delete-collection-name">Collection Name *</label>
+                    <input type="text" id="delete-collection-name" placeholder="e.g., inshora" required>
+                    <div class="info-text">Enter the name of the collection you want to delete</div>
+                </div>
+
+                <button type="submit" class="btn btn-danger" id="delete-btn">
+                    Delete Collection
+                </button>
+            </form>
+        </div>
+
+        <!-- Voice Settings Panel -->
+        <div class="content-panel" id="voice-panel">
+            <h2 class="section-title">🎤 Voice Agent Settings</h2>
+            <div class="alert alert-info" id="voice-alert"></div>
+            
+            <button class="btn btn-primary" onclick="loadVoiceSettings()">🔄 Load Current Settings</button>
+            
+            <div class="divider"></div>
+            
+            <form id="voice-settings-form">
+                <div class="settings-grid">
+                    <!-- TTS Settings -->
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 15px;">🔊 Text-to-Speech</h3>
+                        <div class="form-group">
+                            <label for="voice-id">Voice ID</label>
+                            <input type="text" id="voice-id" placeholder="694f9389-aac1-45b6-b726-9d9369183238">
+                            <div class="info-text">Cartesia voice ID for the agent</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="tts-model">TTS Model</label>
+                            <input type="text" id="tts-model" value="sonic-3">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="tts-language">TTS Language</label>
+                            <input type="text" id="tts-language" value="en">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="tts-sample-rate">Sample Rate</label>
+                            <input type="number" id="tts-sample-rate" value="16000">
+                        </div>
+                    </div>
+
+                    <!-- LLM Settings -->
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 15px;">🤖 Language Model</h3>
+                        <div class="form-group">
+                            <label for="llm-model">LLM Model</label>
+                            <input type="text" id="llm-model" value="gemini-2.0-flash-exp">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="llm-temperature">Temperature</label>
+                            <input type="number" id="llm-temperature" step="0.1" min="0" max="2" value="0.3">
+                            <div class="info-text">Controls randomness (0.0 - 2.0)</div>
+                        </div>
+                    </div>
+
+                    <!-- STT Settings -->
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 15px;">🎙️ Speech-to-Text</h3>
+                        <div class="form-group">
+                            <label for="stt-model">STT Model</label>
+                            <input type="text" id="stt-model" value="nova-3">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="stt-language">STT Language</label>
+                            <input type="text" id="stt-language" value="en">
+                        </div>
+                    </div>
+
+                    <!-- VAD Settings -->
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 15px;">🎚️ Voice Activity Detection</h3>
+                        <div class="form-group">
+                            <label for="vad-min-speech">Min Speech Duration (s)</label>
+                            <input type="number" id="vad-min-speech" step="0.01" value="0.05">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="vad-min-silence">Min Silence Duration (s)</label>
+                            <input type="number" id="vad-min-silence" step="0.01" value="0.2">
+                        </div>
+                    </div>
+
+                    <!-- RAG Settings -->
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 15px;">📚 RAG Settings</h3>
+                        <div class="form-group">
+                            <label for="rag-collection">RAG Collection</label>
+                            <input type="text" id="rag-collection" value="inshora">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rag-top-k">Top K Results</label>
+                            <input type="number" id="rag-top-k" value="3" min="1" max="20">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="rag-timeout">RAG Timeout (s)</label>
+                            <input type="number" id="rag-timeout" step="0.05" value="0.75">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="form-group">
+                    <label for="agent-prompt">Agent System Prompt</label>
+                    <textarea id="agent-prompt" rows="8" placeholder="You are a voice AI assistant..."></textarea>
+                    <div class="info-text">The instructions given to the AI agent</div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="voice-save-btn">
+                    Save Voice Settings
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update content panels
+            document.querySelectorAll('.content-panel').forEach(panel => panel.classList.remove('active'));
+            document.getElementById(`${tabName}-panel`).classList.add('active');
+
+            // Load data when switching to specific tabs
+            if (tabName === 'collections') {
+                loadCollections();
+            } else if (tabName === 'voice') {
+                loadVoiceSettings();
+            }
+        }
+
+        // Show alert message
+        function showAlert(panelId, message, type = 'info') {
+            const alert = document.getElementById(`${panelId}-alert`);
+            alert.textContent = message;
+            alert.className = `alert alert-${type} show`;
+            setTimeout(() => alert.classList.remove('show'), 5000);
+        }
+
+        // File input handlers
+        document.getElementById('pdf-file').addEventListener('change', function(e) {
+            const filename = e.target.files[0]?.name || '';
+            document.getElementById('pdf-filename').textContent = filename ? `Selected: ${filename}` : '';
+        });
+
+        document.getElementById('excel-file').addEventListener('change', function(e) {
+            const filename = e.target.files[0]?.name || '';
+            document.getElementById('excel-filename').textContent = filename ? `Selected: ${filename}` : '';
+        });
+
+        // Ingest Data Form
+        document.getElementById('ingest-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('ingest-btn');
+            btn.disabled = true;
+            btn.textContent = 'Ingesting...';
+
+            const formData = new FormData();
+            formData.append('collection_name', document.getElementById('collection-name').value);
+            
+            const urlLink = document.getElementById('url-link').value;
+            if (urlLink) formData.append('url_link', urlLink);
+            
+            const pdfFile = document.getElementById('pdf-file').files[0];
+            if (pdfFile) formData.append('pdf_file', pdfFile);
+            
+            const excelFile = document.getElementById('excel-file').files[0];
+            if (excelFile) formData.append('excel_file', excelFile);
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/ingest`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('ingest', `✅ Successfully ingested ${data.total_chunks_loaded} chunks!`, 'success');
+                    document.getElementById('ingest-form').reset();
+                    document.getElementById('pdf-filename').textContent = '';
+                    document.getElementById('excel-filename').textContent = '';
+                } else {
+                    showAlert('ingest', `❌ Error: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showAlert('ingest', `❌ Failed to connect to API: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Ingest Data';
+            }
+        });
+
+        // Load Collections
+        async function loadCollections() {
+            const container = document.getElementById('collections-container');
+            const loading = document.getElementById('collections-loading');
+            
+            loading.style.display = 'block';
+            container.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/collections`);
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (data.total_collections === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 40px;">No collections found. Start by ingesting some data!</p>';
+                    return;
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'collections-grid';
+
+                for (const [name, chunkCount] of Object.entries(data.collections)) {
+                    const card = document.createElement('div');
+                    card.className = 'collection-card';
+                    card.innerHTML = `
+                        <div class="collection-name">${name}</div>
+                        <div class="collection-info">
+                            🔢 Chunks: ${chunkCount}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                }
+
+                container.appendChild(grid);
+                showAlert('collections', `Found ${data.total_collections} collection(s)`, 'success');
+
+            } catch (error) {
+                loading.style.display = 'none';
+                showAlert('collections', `❌ Failed to load collections: ${error.message}`, 'error');
+            }
+        }
+
+        // Delete Collection Form
+        document.getElementById('delete-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const collectionName = document.getElementById('delete-collection-name').value;
+            
+            if (!confirm(`Are you sure you want to delete the collection "${collectionName}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            const btn = document.getElementById('delete-btn');
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/collection/${collectionName}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('delete', `✅ ${data.message}`, 'success');
+                    document.getElementById('delete-form').reset();
+                } else {
+                    showAlert('delete', `❌ Error: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showAlert('delete', `❌ Failed to connect to API: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Delete Collection';
+            }
+        });
+
+        // Load Voice Settings
+        async function loadVoiceSettings() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/voice-settings`);
+                const data = await response.json();
+
+                if (response.ok && data.settings) {
+                    const settings = data.settings;
+                    
+                    document.getElementById('voice-id').value = settings.voice_id || '';
+                    document.getElementById('agent-prompt').value = settings.prompt || '';
+                    document.getElementById('llm-model').value = settings.llm_model || '';
+                    document.getElementById('llm-temperature').value = settings.llm_temperature || 0.3;
+                    document.getElementById('stt-model').value = settings.stt_model || '';
+                    document.getElementById('stt-language').value = settings.stt_language || '';
+                    document.getElementById('tts-model').value = settings.tts_model || '';
+                    document.getElementById('tts-language').value = settings.tts_language || '';
+                    document.getElementById('tts-sample-rate').value = settings.tts_sample_rate || 16000;
+                    document.getElementById('vad-min-speech').value = settings.vad_min_speech_duration || 0.05;
+                    document.getElementById('vad-min-silence').value = settings.vad_min_silence_duration || 0.2;
+                    document.getElementById('rag-collection').value = settings.rag_collection || '';
+                    document.getElementById('rag-top-k').value = settings.rag_top_k || 3;
+                    document.getElementById('rag-timeout').value = settings.rag_timeout || 0.75;
+
+                    showAlert('voice', '✅ Settings loaded successfully', 'success');
+                } else {
+                    showAlert('voice', '❌ Failed to load settings', 'error');
+                }
+            } catch (error) {
+                showAlert('voice', `❌ Failed to connect to API: ${error.message}`, 'error');
+            }
+        }
+
+        // Save Voice Settings Form
+        document.getElementById('voice-settings-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('voice-save-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const settings = {
+                voice_id: document.getElementById('voice-id').value,
+                prompt: document.getElementById('agent-prompt').value,
+                llm_model: document.getElementById('llm-model').value,
+                llm_temperature: parseFloat(document.getElementById('llm-temperature').value),
+                stt_model: document.getElementById('stt-model').value,
+                stt_language: document.getElementById('stt-language').value,
+                tts_model: document.getElementById('tts-model').value,
+                tts_language: document.getElementById('tts-language').value,
+                tts_sample_rate: parseInt(document.getElementById('tts-sample-rate').value),
+                vad_min_speech_duration: parseFloat(document.getElementById('vad-min-speech').value),
+                vad_min_silence_duration: parseFloat(document.getElementById('vad-min-silence').value),
+                rag_collection: document.getElementById('rag-collection').value,
+                rag_top_k: parseInt(document.getElementById('rag-top-k').value),
+                rag_timeout: parseFloat(document.getElementById('rag-timeout').value)
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/voice-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('voice', '✅ Voice settings saved successfully! Restart the agent to apply changes.', 'success');
+                } else {
+                    showAlert('voice', `❌ Error: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showAlert('voice', `❌ Failed to connect to API: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Voice Settings';
+            }
+        });
+
+        // Load collections on page load
+        window.addEventListener('load', () => {
+            console.log('Admin Dashboard loaded');
+            // Auto-load collections when the page loads
+            // loadCollections();
+        });
+    </script>
+</body>
+</html>
+
