@@ -174,8 +174,8 @@ def get_provider_info(config: LLMConfig) -> dict:
         "openai": {
             "name": "OpenAI",
             "model": config.openai_model,
-            "expected_ttft_ms": 700,
-            "description": "Reliable, good quality",
+            "expected_ttft_ms": 400,  # gpt-4o-mini is faster than gpt-4o
+            "description": "Fast & lightweight for simple tasks",
         },
         "google": {
             "name": "Google Gemini",

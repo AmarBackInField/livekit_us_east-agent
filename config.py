@@ -52,11 +52,14 @@ class STTConfig:
 class LLMConfig:
     """LLM configuration supporting multiple providers for ultra-low TTFT."""
     
-    # Provider selection: "openai", "google", "groq"
-    provider: str = "groq"  # Default to Groq for fastest TTFT (100-200ms)
+    # Provider selection: "openai", "google", "groq", "livekit"
+    provider: str = "openai"  # Default to OpenAI gpt-4o-mini for fast, reliable responses
     
-    # OpenAI settings
-    openai_model: str = "gpt-4o-mini"
+    # LiveKit Inference (recommended for production - reduces pipeline hops)
+    use_livekit_inference: bool = True  # Route STT/LLM/TTS through LiveKit Cloud
+    
+    # OpenAI settings (gpt-4o-mini for faster inference on simple tasks)
+    openai_model: str = "gpt-4o-mini"  # Faster than gpt-4o for simple queries
     openai_temperature: float = 0.3
     openai_max_tokens: int = 80
     

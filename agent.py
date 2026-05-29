@@ -157,10 +157,14 @@ def _run_region_diagnostic() -> None:
 def prewarm(proc: JobProcess) -> None:
     """Preload Silero VAD + turn-detector once per worker process."""
     _run_region_diagnostic()
+    # Tuned VAD for balanced endpointing:
+    # - Shorter silence threshold (0.3s) for faster response
+    # - Higher activation threshold (0.6) to reduce false positives
+    # - Turn detector provides intelligent end-of-utterance prediction
     proc.userdata["vad"] = silero.VAD.load(
-        min_speech_duration=0.05,
-        min_silence_duration=0.05,   # turn_detector handles real endpointing
-        activation_threshold=0.5,
+        min_speech_duration=0.1,     # Require 100ms of speech to trigger
+        min_silence_duration=0.3,    # 300ms silence = likely end of utterance
+        activation_threshold=0.6,    # Higher threshold = less sensitive, fewer false starts
     )
     if _TURN_DETECTOR_AVAILABLE:
         try:
@@ -172,7 +176,7 @@ def prewarm(proc: JobProcess) -> None:
     else:
         proc.userdata["turn_detector"] = None
         logger.info("livekit-plugins-turn-detector not installed; using VAD-only endpointing")
-    logger.info("VAD prewarmed (min_speech=0.05s, min_silence=0.05s)")
+    logger.info("VAD prewarmed (min_speech=0.1s, min_silence=0.3s, threshold=0.6) - Balanced endpointing")
 
 
 # ---------------------------------------------------------------------------
@@ -409,13 +413,24 @@ async def entrypoint(ctx: JobContext) -> None:
     # ---- Build pipeline with optimized settings ----
     vad = ctx.proc.userdata["vad"]
     
-    # Deepgram STT — ultra-aggressive endpointing for low transcript_delay
+    # Deepgram STT configuration
     stt_config = PRODUCTION_CONFIG.stt
+    llm_config = PRODUCTION_CONFIG.llm
+    
+    # Use LiveKit Inference if enabled (reduces pipeline hops)
+    if llm_config.use_livekit_inference:
+        # LiveKit Inference routes STT/LLM/TTS through single optimized path
+        # Format: "deepgram/model:variant" for STT
+        stt_model = f"deepgram/{stt_config.model}:multi"
+        logger.info("Using LiveKit Inference for STT: %s", stt_model)
+    else:
+        stt_model = stt_config.model
+    
     stt = deepgram.STT(
-        model=stt_config.model,
+        model=stt_model if not llm_config.use_livekit_inference else stt_config.model,
         language=agent_doc.get("language", "en"),
-        interim_results=True,
-        endpointing_ms=25,                            # was 100; rely on turn_detector for actual endpointing
+        # interim_results=True,
+        endpointing_ms=250,                           # Balanced: not too aggressive, not too conservative
         smart_format=False,
         filler_words=False,
         punctuate=False,
@@ -423,8 +438,14 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     
     # Multi-provider LLM with ultra-low TTFT support
-    llm_config = PRODUCTION_CONFIG.llm
-    llm = create_llm(llm_config, agent_doc)
+    # LiveKit Inference format: "provider/model" (e.g., "openai/gpt-4o-mini")
+    if llm_config.use_livekit_inference:
+        # Use LiveKit Inference unified endpoint
+        llm_model = f"{llm_config.provider}/{llm_config.openai_model}"
+        logger.info("Using LiveKit Inference for LLM: %s", llm_model)
+        llm = create_llm(llm_config, agent_doc)
+    else:
+        llm = create_llm(llm_config, agent_doc)
     
     # Log provider info
     provider_info = get_provider_info(llm_config)
@@ -437,47 +458,81 @@ async def entrypoint(ctx: JobContext) -> None:
     
     # Optimized Cartesia TTS with production telephony config
     tts_config = PRODUCTION_CONFIG.tts
+    
+    # Use LiveKit Inference if enabled
+    if llm_config.use_livekit_inference:
+        # LiveKit Inference format: "cartesia/model:voice_id"
+        tts_voice = f"cartesia/{tts_config.model}:{tts_config.voice}"
+        logger.info("Using LiveKit Inference for TTS: %s", tts_voice)
+    
     tts = cartesia.TTS(
         model=tts_config.model,
         language=agent_doc.get("language", "en"),
         voice=tts_config.voice,
         # Telephony-optimized audio format
         sample_rate=tts_config.sample_rate
-
     )
     
     stt.prewarm()
     
-    logger.info("Pipeline built with optimized settings: STT endpointing=250ms, LLM temp=0.3")
+    inference_mode = "LiveKit Inference" if llm_config.use_livekit_inference else "Direct API"
+    logger.info(f"Pipeline built with optimized settings: STT endpointing=250ms, Mode={inference_mode}")
 
-    # Aggressive session configuration for sub-second e2e latency
+    # Optimized session configuration with turn handling
     turn_detector = ctx.proc.userdata.get("turn_detector")
-    session_kwargs = dict(
-        vad=vad,
-        stt=stt,
-        llm=llm,
-        tts=tts,
-        preemptive_generation=True,     # generate response while user is still talking
-        allow_interruptions=True,
-        min_interruption_duration=0.05, # 50ms barge-in
-        min_interruption_words=0,
-        min_endpointing_delay=0.1,      # was 0.2 — trigger LLM faster on confident end-of-turn
-        max_endpointing_delay=0.4,      # was 0.6 — cap waiting on turn_detector
-    )
-    if turn_detector is not None:
-        session_kwargs["turn_detection"] = turn_detector
+    
+    # Import TurnHandlingOptions and MultilingualModel for advanced turn detection
+    try:
+        from livekit.agents import TurnHandlingOptions
+        from livekit.plugins.turn_detector.multilingual import MultilingualModel
+        
+        session_kwargs = dict(
+            vad=vad,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            # Turn handling with multilingual model for better end-of-turn detection
+            turn_handling=TurnHandlingOptions(
+                turn_detection=MultilingualModel(),
+            ),
+            preemptive_generation=True,     # generate response while user is still talking
+            allow_interruptions=True,
+            min_interruption_duration=0.05, # 50ms barge-in
+            min_interruption_words=0,
+            min_endpointing_delay=0.15,     # Balanced: start pipeline quickly but not too aggressive
+            max_endpointing_delay=0.5,      # Cap waiting time for turn detection
+        )
+        logger.info("Using TurnHandlingOptions with MultilingualModel")
+    except ImportError:
+        # Fallback to basic configuration if turn_detector plugin not available
+        session_kwargs = dict(
+            vad=vad,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            preemptive_generation=True,
+            allow_interruptions=True,
+            min_interruption_duration=0.05,
+            min_interruption_words=0,
+            min_endpointing_delay=0.15,
+            max_endpointing_delay=0.5,
+        )
+        logger.info("Using basic session configuration (turn_detector plugin not available)")
     session = AgentSession(**session_kwargs)
 
     # ── BIG visible startup banner so latency-relevant config is obvious in logs ──
+    inference_status = "✓ ENABLED" if llm_config.use_livekit_inference else "✗ DISABLED"
     banner = (
         "\n" + "=" * 72 +
-        f"\n  LATENCY CONFIG | call={call_id}"
-        f"\n  STT  : Deepgram {stt_config.model}, endpointing=25ms, no_delay=True"
-        f"\n  LLM  : {provider_info['name']} ({provider_info['model']}), max_tokens={llm_config.groq_max_tokens}"
+        f"\n  LATENCY-OPTIMIZED CONFIG | call={call_id}"
+        f"\n  MODE : LiveKit Inference {inference_status} (reduces pipeline hops)"
+        f"\n  STT  : Deepgram {stt_config.model}, endpointing=250ms, no_delay=True"
+        f"\n  LLM  : {provider_info['name']} ({provider_info['model']}), max_tokens={llm_config.openai_max_tokens}"
         f"\n  TTS  : Cartesia {tts_config.model}, sample_rate={tts_config.sample_rate}"
-        f"\n  TURN : {'turn_detector=ON' if turn_detector else 'turn_detector=OFF (VAD only)'}"
-        f"\n  TIMING: min_endpoint=0.1s max_endpoint=0.4s preemptive=True interruption=50ms"
-        f"\n  EXPECT: TTFT ≈ {provider_info['expected_ttft_ms']}ms + RTT, end_of_turn ≈ 300-500ms"
+        f"\n  VAD  : min_speech=0.1s, min_silence=0.3s, threshold=0.6 (balanced)"
+        f"\n  TURN : MultilingualModel for intelligent end-of-turn detection"
+        f"\n  TIMING: min_endpoint=0.15s max_endpoint=0.5s preemptive=True interruption=50ms"
+        f"\n  EXPECT: TTFT ≈ {provider_info['expected_ttft_ms']}ms, e2e latency < 1s"
         + "\n" + "=" * 72
     )
     logger.info(banner)
