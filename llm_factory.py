@@ -9,13 +9,35 @@ Provider Performance:
 - Mistral: 200-350ms TTFT
 - Google Gemini: 300-400ms TTFT
 - OpenAI: 700ms TTFT
+
+IMPORTANT: All plugin imports MUST be at module level (top-of-file) so that
+LiveKit's Plugin.register_plugin() runs on the main thread. Lazy imports
+inside functions called from worker subprocesses will raise:
+  RuntimeError: Plugins must be registered on the main thread
 """
 
 import logging
 import os
-from typing import Optional
 
 from config import LLMConfig
+
+# --- Register all LLM plugins on the main thread at import time ---
+from livekit.plugins import openai as _openai_plugin
+from livekit.plugins import mistralai as _mistralai_plugin
+
+try:
+    from livekit.plugins import google as _google_plugin
+    _GOOGLE_AVAILABLE = True
+except Exception:
+    _google_plugin = None  # type: ignore
+    _GOOGLE_AVAILABLE = False
+
+try:
+    from livekit.plugins import groq as _groq_plugin
+    _GROQ_AVAILABLE = True
+except Exception:
+    _groq_plugin = None  # type: ignore
+    _GROQ_AVAILABLE = False
 
 logger = logging.getLogger("llm-factory")
 
@@ -54,6 +76,11 @@ def create_llm(config: LLMConfig, agent_doc: dict):
     
     except Exception as e:
         logger.error(f"Failed to create {provider} LLM: {e}")
+        logger.error(
+            "If using Mistral, ensure MISTRAL_API_KEY is set in your environment / .env file."
+            if provider == "mistral" else
+            f"Check that the API key and plugin for '{provider}' are correctly configured."
+        )
         
         # Try fallback if enabled
         if config.enable_fallback and provider != config.fallback_provider:
@@ -65,94 +92,70 @@ def create_llm(config: LLMConfig, agent_doc: dict):
 
 def _create_openai_llm(config: LLMConfig, agent_doc: dict):
     """Create OpenAI LLM instance."""
-    try:
-        from livekit.plugins import openai
-    except ImportError:
-        raise ImportError("OpenAI plugin not installed. Run: pip install livekit-plugins-openai")
-    
-    # Use config model by default, only override if agent_doc has an OpenAI model
     model = config.openai_model
     if "llm_model" in agent_doc:
         agent_model = agent_doc["llm_model"]
-        # Only use agent_doc model if it's an OpenAI model
         if any(x in agent_model.lower() for x in ["gpt", "o1", "o3"]):
             model = agent_model
-    
-    llm = openai.LLM(
+
+    llm = _openai_plugin.LLM(
         model=model,
         temperature=config.openai_temperature,
         max_completion_tokens=config.openai_max_tokens,
     )
-    
+
     logger.info(f"OpenAI LLM created: {model}")
     return llm
 
 
 def _create_google_llm(config: LLMConfig, agent_doc: dict):
     """Create Google Gemini LLM instance."""
-    try:
-        from livekit.plugins import google
-    except ImportError:
+    if not _GOOGLE_AVAILABLE:
         raise ImportError("Google plugin not installed. Run: pip install livekit-plugins-google")
-    
-    # Check for API key
     if not os.getenv("GOOGLE_API_KEY"):
         raise ValueError("GOOGLE_API_KEY environment variable not set")
-    
-    # Use config model by default, only override if agent_doc has a Gemini model
+
     model = config.google_model
     if "llm_model" in agent_doc:
         agent_model = agent_doc["llm_model"]
-        # Only use agent_doc model if it's a Gemini model
         if "gemini" in agent_model.lower():
             model = agent_model
-    
-    llm = google.LLM(
+
+    llm = _google_plugin.LLM(
         model=model,
         temperature=config.google_temperature,
         max_output_tokens=config.google_max_tokens,
     )
-    
+
     logger.info(f"Google Gemini LLM created: {model}")
     return llm
 
 
 def _create_groq_llm(config: LLMConfig, agent_doc: dict):
     """Create Groq LLM instance (fastest)."""
-    try:
-        from livekit.plugins import groq
-    except ImportError:
+    if not _GROQ_AVAILABLE:
         raise ImportError("Groq plugin not installed. Run: pip install livekit-plugins-groq")
-    
-    # Check for API key
     if not os.getenv("GROQ_API_KEY"):
         raise ValueError("GROQ_API_KEY environment variable not set")
-    
-    # Use config model by default, only override if agent_doc has a Groq/Llama model
+
     model = config.groq_model
     if "llm_model" in agent_doc:
         agent_model = agent_doc["llm_model"]
-        # Only use agent_doc model if it's a Groq-compatible model
         if any(x in agent_model.lower() for x in ["llama", "mixtral", "groq"]):
             model = agent_model
-    
-    llm = groq.LLM(
+
+    llm = _groq_plugin.LLM(
         model=model,
         temperature=config.groq_temperature,
         max_tokens=config.groq_max_tokens,
     )
-    
+
     logger.info(f"Groq LLM created: {model} (ultra-fast TTFT)")
     return llm
 
 
 def _create_mistral_llm(config: LLMConfig, agent_doc: dict):
     """Create Mistral LLM instance."""
-    try:
-        from livekit.plugins import mistralai
-    except ImportError:
-        raise ImportError("Mistral plugin not installed. Run: pip install livekit-plugins-mistralai")
-
     if not os.getenv("MISTRAL_API_KEY"):
         raise ValueError("MISTRAL_API_KEY environment variable not set")
 
@@ -162,10 +165,10 @@ def _create_mistral_llm(config: LLMConfig, agent_doc: dict):
         if "mistral" in agent_model.lower():
             model = agent_model
 
-    llm = mistralai.LLM(
+    llm = _mistralai_plugin.LLM(
         model=model,
         temperature=config.mistral_temperature,
-        max_tokens=config.mistral_max_tokens,
+        max_completion_tokens=config.mistral_max_tokens,
     )
 
     logger.info(f"Mistral LLM created: {model}")
