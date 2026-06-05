@@ -52,7 +52,7 @@ class STTConfig:
 class LLMConfig:
     """LLM configuration supporting multiple providers for ultra-low TTFT."""
     
-    # Provider selection: "openai", "google", "groq", "livekit"
+    # Provider selection: "openai", "google", "groq", "mistral", "livekit"
     provider: str = "openai"  # Default to OpenAI gpt-4o-mini for fast, reliable responses
     
     # LiveKit Inference (recommended for production - reduces pipeline hops)
@@ -72,7 +72,12 @@ class LLMConfig:
     groq_model: str = "llama-3.1-8b-instant"
     groq_temperature: float = 0.3
     groq_max_tokens: int = 80    # Short answers = fast responses on phone
-    
+
+    # Mistral settings
+    mistral_model: str = "mistral-small-latest"
+    mistral_temperature: float = 0.3
+    mistral_max_tokens: int = 80
+
     # Performance targets
     target_ttft_ms: int = 200  # Alert if exceeded
     

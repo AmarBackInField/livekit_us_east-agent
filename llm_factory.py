@@ -1,11 +1,12 @@
 """
 LLM Factory for Multi-Provider Support
 
-Supports switching between OpenAI, Google Gemini, and Groq
+Supports switching between OpenAI, Google Gemini, Groq, and Mistral
 for ultra-low TTFT (Time to First Token).
 
 Provider Performance:
 - Groq: 100-200ms TTFT (fastest)
+- Mistral: 200-350ms TTFT
 - Google Gemini: 300-400ms TTFT
 - OpenAI: 700ms TTFT
 """
@@ -46,6 +47,8 @@ def create_llm(config: LLMConfig, agent_doc: dict):
             return _create_google_llm(config, agent_doc)
         elif provider == "groq":
             return _create_groq_llm(config, agent_doc)
+        elif provider == "mistral":
+            return _create_mistral_llm(config, agent_doc)
         else:
             raise ValueError(f"Unknown LLM provider: {provider}")
     
@@ -143,6 +146,32 @@ def _create_groq_llm(config: LLMConfig, agent_doc: dict):
     return llm
 
 
+def _create_mistral_llm(config: LLMConfig, agent_doc: dict):
+    """Create Mistral LLM instance."""
+    try:
+        from livekit.plugins import mistralai
+    except ImportError:
+        raise ImportError("Mistral plugin not installed. Run: pip install livekit-plugins-mistralai")
+
+    if not os.getenv("MISTRAL_API_KEY"):
+        raise ValueError("MISTRAL_API_KEY environment variable not set")
+
+    model = config.mistral_model
+    if "llm_model" in agent_doc:
+        agent_model = agent_doc["llm_model"]
+        if "mistral" in agent_model.lower():
+            model = agent_model
+
+    llm = mistralai.LLM(
+        model=model,
+        temperature=config.mistral_temperature,
+        max_tokens=config.mistral_max_tokens,
+    )
+
+    logger.info(f"Mistral LLM created: {model}")
+    return llm
+
+
 def _create_fallback_llm(config: LLMConfig, agent_doc: dict):
     """Create fallback LLM (usually OpenAI)."""
     fallback_provider = config.fallback_provider.lower()
@@ -155,6 +184,8 @@ def _create_fallback_llm(config: LLMConfig, agent_doc: dict):
         return _create_google_llm(config, agent_doc)
     elif fallback_provider == "groq":
         return _create_groq_llm(config, agent_doc)
+    elif fallback_provider == "mistral":
+        return _create_mistral_llm(config, agent_doc)
     else:
         # Ultimate fallback - OpenAI
         logger.warning(f"Unknown fallback provider {fallback_provider}, using OpenAI")
@@ -188,6 +219,12 @@ def get_provider_info(config: LLMConfig) -> dict:
             "model": config.groq_model,
             "expected_ttft_ms": 150,
             "description": "Ultra-fast inference",
+        },
+        "mistral": {
+            "name": "Mistral",
+            "model": config.mistral_model,
+            "expected_ttft_ms": 275,
+            "description": "Fast, efficient European AI",
         },
     }
     
